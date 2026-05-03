@@ -287,7 +287,7 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	handshake.mixHash(handshake.remoteStatic[:])
 
 	msg := MessageInitiation{
-		Type:      MessageInitiationType,
+		Type:      HiddenType(MessageInitiationType),
 		Ephemeral: handshake.localEphemeral.publicKey(),
 	}
 
@@ -460,7 +460,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	}
 
 	var msg MessageResponse
-	msg.Type = MessageResponseType
+	msg.Type = HiddenType(MessageResponseType)
 	msg.Sender = handshake.localIndex
 	msg.Receiver = handshake.remoteIndex
 

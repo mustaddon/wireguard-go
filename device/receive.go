@@ -127,14 +127,20 @@ func (device *Device) RoutineReceiveIncoming(maxBatchSize int, recv conn.Receive
 
 		// handle each packet in the batch
 		for i, size := range sizes[:count] {
-			if size < MinMessageSize {
+			if size < 1 {
+				continue
+			}
+
+			hhLen := HiddenHeaderLen(bufsArrs[i][0])
+
+			if size-int(hhLen) < MinMessageSize {
 				continue
 			}
 
 			// check size of packet
 
-			packet := bufsArrs[i][:size]
-			msgType := binary.LittleEndian.Uint32(packet[:4])
+			packet := bufsArrs[i][hhLen:size]
+			msgType := MsgHiddenType(binary.LittleEndian.Uint32(packet[:4]))
 
 			switch msgType {
 

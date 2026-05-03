@@ -130,7 +130,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	peer.timersAnyAuthenticatedPacketTraversal()
 	peer.timersAnyAuthenticatedPacketSent()
 
-	err = peer.SendBuffers([][]byte{packet})
+	err = peer.SendBuffers([][]byte{AddHiddenHeader(packet, MessageInitiationType)})
 	if err != nil {
 		peer.device.log.Errorf("%v - Failed to send handshake initiation: %v", peer, err)
 	}
@@ -167,7 +167,7 @@ func (peer *Peer) SendHandshakeResponse() error {
 	peer.timersAnyAuthenticatedPacketSent()
 
 	// TODO: allocation could be avoided
-	err = peer.SendBuffers([][]byte{packet})
+	err = peer.SendBuffers([][]byte{AddHiddenHeader(packet, MessageResponseType)})
 	if err != nil {
 		peer.device.log.Errorf("%v - Failed to send handshake response: %v", peer, err)
 	}
@@ -187,7 +187,7 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 	packet := make([]byte, MessageCookieReplySize)
 	_ = reply.marshal(packet)
 	// TODO: allocation could be avoided
-	device.net.bind.Send([][]byte{packet}, initiatingElem.endpoint)
+	device.net.bind.Send([][]byte{AddHiddenHeader(packet, MessageCookieReplyType)}, initiatingElem.endpoint)
 
 	return nil
 }
@@ -452,7 +452,7 @@ func (device *Device) RoutineEncryption(id int) {
 			fieldReceiver := header[4:8]
 			fieldNonce := header[8:16]
 
-			binary.LittleEndian.PutUint32(fieldType, MessageTransportType)
+			binary.LittleEndian.PutUint32(fieldType, HiddenType(MessageTransportType))
 			binary.LittleEndian.PutUint32(fieldReceiver, elem.keypair.remoteIndex)
 			binary.LittleEndian.PutUint64(fieldNonce, elem.nonce)
 
@@ -510,7 +510,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			if len(elem.packet) != MessageKeepaliveSize {
 				dataSent = true
 			}
-			bufs = append(bufs, elem.packet)
+			bufs = append(bufs, AddHiddenHeader(elem.packet, MessageTransportType))
 		}
 
 		peer.timersAnyAuthenticatedPacketTraversal()
