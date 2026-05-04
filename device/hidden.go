@@ -1,5 +1,10 @@
 package device
 
+import (
+	"time"
+	"unsafe"
+)
+
 func AddHiddenHeader(packet []byte, msgType uint32) []byte {
 	hidden := make([]byte, len(packet)+2)
 	copy(hidden[2:], packet[0:])
@@ -8,8 +13,8 @@ func AddHiddenHeader(packet []byte, msgType uint32) []byte {
 	return hidden
 }
 
-func HiddenHeaderLen(val byte) uint8 {
-	return 1 + (val & 3)
+func HiddenHeaderLen(val byte) int {
+	return 1 + (int(val) & 3)
 }
 
 func MsgHiddenType(val uint32) uint32 {
@@ -17,5 +22,8 @@ func MsgHiddenType(val uint32) uint32 {
 }
 
 func HiddenType(val uint32) uint32 {
-	return val
+	result := uint32(time.Now().UnixNano())
+	byteSlice := (*[4]byte)(unsafe.Pointer(&result))[:]
+	byteSlice[0] += byte(val - MsgHiddenType(result))
+	return result
 }
