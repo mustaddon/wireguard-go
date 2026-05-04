@@ -153,7 +153,7 @@ func (st *CookieChecker) CreateReply(
 	smac1 := smac2 - blake2s.Size128
 
 	reply := new(MessageCookieReply)
-	reply.Type = HiddenType(MessageCookieReplyType)
+	reply.Type = MessageCookieReplyType
 	reply.Receiver = recv
 
 	_, err := rand.Read(reply.Nonce[:])
