@@ -24,6 +24,6 @@ func MsgHiddenType(val uint32) uint32 {
 func HiddenType(val uint32) uint32 {
 	result := uint32(time.Now().UnixNano())
 	byteSlice := (*[4]byte)(unsafe.Pointer(&result))[:]
-	byteSlice[0] += byte(val - MsgHiddenType(result))
+	byteSlice[0] = byte(int(byteSlice[0]) + (int(val) - int(MsgHiddenType(result))))
 	return result
 }
