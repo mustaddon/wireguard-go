@@ -8,7 +8,7 @@ import (
 
 func AddHiddenHeader(packet []byte, msgType uint32) []byte {
 	rnd := byte(rand.UintN(256))
-	if rnd == 0xc0 || rnd < 16 {
+	if rnd < 16 {
 		rnd |= 0x10
 	}
 	hlen := HiddenHeaderLen(rnd)
