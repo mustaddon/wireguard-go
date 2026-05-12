@@ -123,7 +123,7 @@ func (msg *MessageInitiation) unmarshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	msg.Type = MsgHiddenType(binary.LittleEndian.Uint32(b))
+	msg.Type = binary.LittleEndian.Uint32(b)
 	msg.Sender = binary.LittleEndian.Uint32(b[4:])
 	copy(msg.Ephemeral[:], b[8:])
 	copy(msg.Static[:], b[8+len(msg.Ephemeral):])
@@ -139,7 +139,7 @@ func (msg *MessageInitiation) marshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	binary.LittleEndian.PutUint32(b, HiddenType(msg.Type))
+	binary.LittleEndian.PutUint32(b, msg.Type)
 	binary.LittleEndian.PutUint32(b[4:], msg.Sender)
 	copy(b[8:], msg.Ephemeral[:])
 	copy(b[8+len(msg.Ephemeral):], msg.Static[:])
@@ -155,7 +155,7 @@ func (msg *MessageResponse) unmarshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	msg.Type = MsgHiddenType(binary.LittleEndian.Uint32(b))
+	msg.Type = binary.LittleEndian.Uint32(b)
 	msg.Sender = binary.LittleEndian.Uint32(b[4:])
 	msg.Receiver = binary.LittleEndian.Uint32(b[8:])
 	copy(msg.Ephemeral[:], b[12:])
@@ -171,7 +171,7 @@ func (msg *MessageResponse) marshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	binary.LittleEndian.PutUint32(b, HiddenType(msg.Type))
+	binary.LittleEndian.PutUint32(b, msg.Type)
 	binary.LittleEndian.PutUint32(b[4:], msg.Sender)
 	binary.LittleEndian.PutUint32(b[8:], msg.Receiver)
 	copy(b[12:], msg.Ephemeral[:])
@@ -187,7 +187,7 @@ func (msg *MessageCookieReply) unmarshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	msg.Type = MsgHiddenType(binary.LittleEndian.Uint32(b))
+	msg.Type = binary.LittleEndian.Uint32(b)
 	msg.Receiver = binary.LittleEndian.Uint32(b[4:])
 	copy(msg.Nonce[:], b[8:])
 	copy(msg.Cookie[:], b[8+len(msg.Nonce):])
@@ -200,7 +200,7 @@ func (msg *MessageCookieReply) marshal(b []byte) error {
 		return errMessageLengthMismatch
 	}
 
-	binary.LittleEndian.PutUint32(b, HiddenType(msg.Type))
+	binary.LittleEndian.PutUint32(b, msg.Type)
 	binary.LittleEndian.PutUint32(b[4:], msg.Receiver)
 	copy(b[8:], msg.Nonce[:])
 	copy(b[8+len(msg.Nonce):], msg.Cookie[:])
