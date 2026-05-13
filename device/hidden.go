@@ -59,8 +59,8 @@ func XorCook(buffer []byte, mask []uint32) {
 	ptr[1] ^= ptr[0] ^ mask[1]
 }
 
-func MsgHiddenType(val byte) byte {
-	return val & 7
+func MsgHiddenType(val byte) uint32 {
+	return uint32(val & 7)
 }
 
 func HiddenLen(val byte) int {
@@ -80,21 +80,24 @@ func RemoveHidden(buffer []byte, device *Device) int {
 
 	if msgType == 0 {
 		hlen = HiddenLen(buffer[3] >> 3)
-		msgType = MsgHiddenType(buffer[3+hlen])
+		buffer = buffer[hlen:]
+		msgType = MsgHiddenType(buffer[3])
 	}
 
 	switch msgType {
 	case MessageTransportType:
-		XorData(buffer[hlen:], mask)
+		XorData(buffer, mask)
 	case MessageInitiationType:
-		XorInit(buffer[hlen:], mask)
+		XorInit(buffer, mask)
 	case MessageResponseType:
-		XorResp(buffer[hlen:], mask)
+		XorResp(buffer, mask)
 	case MessageCookieReplyType:
-		XorCook(buffer[hlen:], mask)
+		XorCook(buffer, mask)
 	default:
 		return -1
 	}
+
+	binary.LittleEndian.PutUint32(buffer, msgType)
 
 	return hlen
 }
