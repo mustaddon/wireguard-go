@@ -81,6 +81,7 @@ func RemoveHidden(buffer []byte, device *Device) int {
 	if msgType == 0 {
 		hlen = HiddenLen(buffer[3] >> 3)
 		buffer = buffer[hlen:]
+		XorHead(buffer, mask)
 		msgType = MsgHiddenType(buffer[3])
 	}
 
@@ -118,25 +119,32 @@ func ApplyHidden(packet []byte, msgType uint32, device *Device) []byte {
 	hidden := packet
 	mask := GetMask(device)
 
-	binary.BigEndian.PutUint32(hidden, (uint32(time.Now().UnixNano())<<3)|msgType)
+	binary.BigEndian.PutUint32(packet, (uint32(time.Now().UnixNano())<<3)|msgType)
 
 	switch msgType {
 	case MessageTransportType:
 		XorData(packet, mask)
+		XorHead(packet, mask)
 		if len(packet) == MessageKeepaliveSize {
 			hidden = AddHiddenHeader(packet, msgType)
+			XorHead(hidden, mask)
 		}
 	case MessageInitiationType:
 		XorInit(packet, mask)
+		XorHead(packet, mask)
 		hidden = AddHiddenHeader(packet, msgType)
+		XorHead(hidden, mask)
 	case MessageResponseType:
 		XorResp(packet, mask)
+		XorHead(packet, mask)
 		hidden = AddHiddenHeader(packet, msgType)
+		XorHead(hidden, mask)
 	case MessageCookieReplyType:
 		XorCook(packet, mask)
+		XorHead(packet, mask)
 		hidden = AddHiddenHeader(packet, msgType)
+		XorHead(hidden, mask)
 	}
 
-	XorHead(hidden, mask)
 	return hidden
 }
