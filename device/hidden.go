@@ -3,7 +3,6 @@ package device
 import (
 	"encoding/binary"
 	"math/rand/v2"
-	"time"
 	"unsafe"
 )
 
@@ -12,6 +11,10 @@ var MASK = [32]byte{
 	0xd0, 0x79, 0x2d, 0x65, 0xce, 0x69, 0x1f, 0x82,
 	0x98, 0x31, 0x89, 0xaf, 0xd6, 0x5c, 0x85, 0x93,
 	0x8b, 0x90, 0x52, 0x33, 0x17, 0xff, 0x18, 0x57}
+
+func ByteMask(device *Device) [32]byte {
+	return MASK
+}
 
 func GetMask(device *Device) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&MASK[0])), 8)
@@ -22,8 +25,7 @@ func IntSlice(buffer []byte, len int) []uint32 {
 }
 
 func XorHead(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 1)
-	ptr[0] ^= mask[0]
+	IntSlice(buffer, 1)[0] ^= mask[0]
 }
 
 func XorData(buffer []byte, mask []uint32) {
@@ -33,30 +35,30 @@ func XorData(buffer []byte, mask []uint32) {
 	ptr[3] ^= ptr[0] ^ mask[3]
 }
 
+func XorCook(buffer []byte, mask []uint32) {
+	ptr := IntSlice(buffer, 2)
+	ptr[1] ^= ptr[0] ^ mask[1]
+}
+
 func XorInit(buffer []byte, mask []uint32) {
 	ptr := IntSlice(buffer, 2)
 	ptr[1] ^= ptr[0] ^ mask[1]
-	XorMac2(buffer, mask, ptr[0])
+	XorMac2(buffer, ptr[0], mask)
 }
 
 func XorResp(buffer []byte, mask []uint32) {
 	ptr := IntSlice(buffer, 3)
 	ptr[1] ^= ptr[0] ^ mask[1]
 	ptr[2] ^= ptr[0] ^ mask[2]
-	XorMac2(buffer, mask, ptr[0])
+	XorMac2(buffer, ptr[0], mask)
 }
 
-func XorMac2(buffer []byte, mask []uint32, head uint32) {
+func XorMac2(buffer []byte, zero uint32, mask []uint32) {
 	ptr := IntSlice(buffer[len(buffer)-16:], 4)
-	ptr[0] ^= head ^ mask[4]
-	ptr[1] ^= head ^ mask[5]
-	ptr[2] ^= head ^ mask[6]
-	ptr[3] ^= head ^ mask[7]
-}
-
-func XorCook(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 2)
-	ptr[1] ^= ptr[0] ^ mask[1]
+	ptr[0] ^= zero ^ mask[4]
+	ptr[1] ^= zero ^ mask[5]
+	ptr[2] ^= zero ^ mask[6]
+	ptr[3] ^= zero ^ mask[7]
 }
 
 func MsgHiddenType(val byte) uint32 {
@@ -64,7 +66,7 @@ func MsgHiddenType(val byte) uint32 {
 }
 
 func HiddenLen(val byte) int {
-	return int((val & 7) + 4)
+	return int((val & 3) + 1)
 }
 
 func RemoveHidden(buffer []byte, device *Device) int {
@@ -73,16 +75,16 @@ func RemoveHidden(buffer []byte, device *Device) int {
 	}
 
 	mask := GetMask(device)
-	XorHead(buffer, mask)
-
-	msgType := MsgHiddenType(buffer[3])
+	msgType := MsgHiddenType(buffer[0] ^ ByteMask(device)[0])
 	hlen := 0
 
 	if msgType == 0 {
-		hlen = HiddenLen(buffer[3] >> 3)
+		hlen = HiddenLen(buffer[0] >> 3)
 		buffer = buffer[hlen:]
 		XorHead(buffer, mask)
-		msgType = MsgHiddenType(buffer[3])
+		msgType = MsgHiddenType(buffer[0])
+	} else {
+		XorHead(buffer, mask)
 	}
 
 	switch msgType {
@@ -103,14 +105,11 @@ func RemoveHidden(buffer []byte, device *Device) int {
 	return hlen
 }
 
-func AddHiddenHeader(packet []byte, msgType uint32) []byte {
-	hlen := HiddenLen(byte(rand.UintN(256)))
+func AddHiddenHeader(packet []byte, msgType uint32, mask []uint32) []byte {
+	hlen := HiddenLen(byte(rand.Uint32()))
 	hidden := make([]byte, len(packet)+hlen)
-	ptr := IntSlice(hidden, 3)
-	ptr[0] = rand.Uint32()
-	ptr[1] = rand.Uint32()
-	ptr[2] = rand.Uint32()
-	hidden[3] = (hidden[3] << 6) | (byte(hlen-4) << 3)
+	binary.LittleEndian.PutUint32(hidden, (rand.Uint32()<<5)|(uint32(hlen-1)<<3))
+	XorHead(hidden, mask)
 	copy(hidden[hlen:], packet)
 	return hidden
 }
@@ -119,31 +118,27 @@ func ApplyHidden(packet []byte, msgType uint32, device *Device) []byte {
 	hidden := packet
 	mask := GetMask(device)
 
-	binary.BigEndian.PutUint32(packet, (uint32(time.Now().UnixNano())<<3)|msgType)
+	binary.LittleEndian.PutUint32(packet, (rand.Uint32()<<3)|msgType)
 
 	switch msgType {
 	case MessageTransportType:
 		XorData(packet, mask)
 		XorHead(packet, mask)
 		if len(packet) == MessageKeepaliveSize {
-			hidden = AddHiddenHeader(packet, msgType)
-			XorHead(hidden, mask)
+			hidden = AddHiddenHeader(packet, msgType, mask)
 		}
 	case MessageInitiationType:
 		XorInit(packet, mask)
 		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType)
-		XorHead(hidden, mask)
+		hidden = AddHiddenHeader(packet, msgType, mask)
 	case MessageResponseType:
 		XorResp(packet, mask)
 		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType)
-		XorHead(hidden, mask)
+		hidden = AddHiddenHeader(packet, msgType, mask)
 	case MessageCookieReplyType:
 		XorCook(packet, mask)
 		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType)
-		XorHead(hidden, mask)
+		hidden = AddHiddenHeader(packet, msgType, mask)
 	}
 
 	return hidden
