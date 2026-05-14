@@ -74,12 +74,13 @@ func RemoveHidden(buffer []byte, device *Device) int {
 		return -1
 	}
 
+	tmp := buffer[0] ^ ByteMask(device)[0]
+	msgType := MsgHiddenType(tmp)
 	mask := GetMask(device)
-	msgType := MsgHiddenType(buffer[0] ^ ByteMask(device)[0])
 	hlen := 0
 
 	if msgType == 0 {
-		hlen = HiddenLen(buffer[0] >> 3)
+		hlen = HiddenLen(tmp >> 3)
 		buffer = buffer[hlen:]
 		XorHead(buffer, mask)
 		msgType = MsgHiddenType(buffer[0])
