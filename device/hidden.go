@@ -115,31 +115,27 @@ func AddHiddenHeader(packet []byte, msgType uint32, mask []uint32) []byte {
 }
 
 func ApplyHidden(packet []byte, msgType uint32, device *Device) []byte {
-	hidden := packet
 	mask := GetMask(device)
 
 	binary.LittleEndian.PutUint32(packet, (rand.Uint32()<<3)|msgType)
 
-	switch msgType {
-	case MessageTransportType:
+	if msgType == MessageTransportType {
 		XorData(packet, mask)
-		XorHead(packet, mask)
-		if len(packet) == MessageKeepaliveSize {
-			hidden = AddHiddenHeader(packet, msgType, mask)
+		if len(packet) != MessageKeepaliveSize {
+			XorHead(packet, mask)
+			return packet
 		}
-	case MessageInitiationType:
-		XorInit(packet, mask)
-		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType, mask)
-	case MessageResponseType:
-		XorResp(packet, mask)
-		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType, mask)
-	case MessageCookieReplyType:
-		XorCook(packet, mask)
-		XorHead(packet, mask)
-		hidden = AddHiddenHeader(packet, msgType, mask)
+	} else {
+		switch msgType {
+		case MessageInitiationType:
+			XorInit(packet, mask)
+		case MessageResponseType:
+			XorResp(packet, mask)
+		case MessageCookieReplyType:
+			XorCook(packet, mask)
+		}
 	}
 
-	return hidden
+	XorHead(packet, mask)
+	return AddHiddenHeader(packet, msgType, mask)
 }
