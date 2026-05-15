@@ -45,6 +45,7 @@ type Device struct {
 		port          uint16 // listening port
 		fwmark        uint32 // mark value (0 = disabled)
 		brokenRoaming bool
+		hiddenMask    [NoisePrivateKeySize]byte
 	}
 
 	staticIdentity struct {
@@ -287,6 +288,7 @@ func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device.closed = make(chan struct{})
 	device.log = logger
 	device.net.bind = bind
+	device.net.hiddenMask = DEFAULT_HIDDEN_MASK
 	device.tun.device = tunDevice
 	mtu, err := device.tun.device.MTU()
 	if err != nil {

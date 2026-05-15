@@ -89,6 +89,8 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			keyf("private_key", (*[32]byte)(&device.staticIdentity.privateKey))
 		}
 
+		keyf("hidden_mask", (*[32]byte)(&device.net.hiddenMask))
+
 		if device.net.port != 0 {
 			sendf("listen_port=%d", device.net.port)
 		}
@@ -204,6 +206,13 @@ func (device *Device) handleDeviceLine(key, value string) error {
 		}
 		device.log.Verbosef("UAPI: Updating private key")
 		device.SetPrivateKey(sk)
+
+	case "hidden_mask":
+		err := loadExactHex(device.net.hiddenMask[:], value)
+		if err != nil {
+			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set hidden_mask: %w", err)
+		}
+		device.log.Verbosef("UAPI: Updating hidden mask")
 
 	case "listen_port":
 		port, err := strconv.ParseUint(value, 10, 16)

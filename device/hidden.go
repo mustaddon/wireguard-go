@@ -6,18 +6,18 @@ import (
 	"unsafe"
 )
 
-var MASK = [32]byte{
+var DEFAULT_HIDDEN_MASK = [32]byte{
 	0x81, 0xab, 0xa4, 0x0d, 0xb7, 0x73, 0x42, 0x2b,
 	0xd0, 0x79, 0x2d, 0x65, 0xce, 0x69, 0x1f, 0x82,
 	0x98, 0x31, 0x89, 0xaf, 0xd6, 0x5c, 0x85, 0x93,
 	0x8b, 0x90, 0x52, 0x33, 0x17, 0xff, 0x18, 0x57}
 
-func ByteMask(device *Device) [32]byte {
-	return MASK
+func ByteMask(device *Device) *[32]byte {
+	return &device.net.hiddenMask
 }
 
 func GetMask(device *Device) []uint32 {
-	return unsafe.Slice((*uint32)(unsafe.Pointer(&MASK[0])), 8)
+	return unsafe.Slice((*uint32)(unsafe.Pointer(&device.net.hiddenMask[0])), 8)
 }
 
 func IntSlice(buffer []byte, len int) []uint32 {
