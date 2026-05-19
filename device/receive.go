@@ -128,7 +128,7 @@ func (device *Device) RoutineReceiveIncoming(maxBatchSize int, recv conn.Receive
 
 		// handle each packet in the batch
 		for i, size := range sizes[:count] {
-			hhLen := RemoveHidden(bufsArrs[i][0:size], device)
+			hhLen := removeHidden(bufsArrs[i][0:size], device)
 
 			if hhLen < 0 || size-hhLen < MinMessageSize {
 				continue
