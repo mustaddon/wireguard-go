@@ -70,10 +70,10 @@ func hiddenLen(val byte) int {
 }
 
 const (
-	QUIC_INIT_LEN = 21
-	QUIC_RESP_LEN = 16
-	QUIC_COOK_LEN = 13
-	QUIC_DATA_LEN = 4
+	quicInitLen = 21
+	quicRespLen = 16
+	quicCookLen = 13
+	quicDataLen = 4
 )
 
 func removeHidden(buffer []byte, device *Device) int {
@@ -87,20 +87,20 @@ func removeHidden(buffer []byte, device *Device) int {
 
 	if (buffer[0] & 0x80) != 0 {
 		if buffer[5] != 3 {
-			hlen += QUIC_INIT_LEN
+			hlen += quicInitLen
 			msgType = MessageInitiationType
 		} else if buffer[9] != 0 {
-			hlen += QUIC_RESP_LEN
+			hlen += quicRespLen
 			msgType = MessageResponseType
 		} else {
-			hlen += QUIC_COOK_LEN
+			hlen += quicCookLen
 			msgType = MessageCookieReplyType
 		}
 		buffer = buffer[hlen:]
 	} else {
 		msgType = MessageTransportType
 		if hlen > 0 {
-			hlen += QUIC_DATA_LEN
+			hlen += quicDataLen
 			buffer = buffer[hlen:]
 		}
 	}
@@ -152,7 +152,7 @@ func addQuicInitHeader(packet []byte, qlen int) ([]byte, int) {
 
 func addQuicDataHeader(packet []byte) ([]byte, int) {
 	flags := 0x40 | byte(rand.Uint32()&0x1F)
-	quic, offset := addHiddenHeader(packet, QUIC_DATA_LEN, hiddenLen(flags))
+	quic, offset := addHiddenHeader(packet, quicDataLen, hiddenLen(flags))
 	quic[0] = flags
 	copy(quic[1:4], packet[4:])
 	return quic, offset
@@ -178,21 +178,21 @@ func applyHidden(packet []byte, msgType uint32, device *Device) []byte {
 		quic, qlen = addQuicDataHeader(packet)
 		xorData(quic[qlen:], mask)
 	case MessageInitiationType:
-		quic, qlen = addQuicInitHeader(packet, QUIC_INIT_LEN)
+		quic, qlen = addQuicInitHeader(packet, quicInitLen)
 		quic[5] = 8
 		binary.LittleEndian.PutUint64(quic[6:], rand.Uint64())
 		quic[14] = 3
 		copy(quic[15:18], packet[4:])
 		xorInit(quic[qlen:], mask)
 	case MessageResponseType:
-		quic, qlen = addQuicInitHeader(packet, QUIC_RESP_LEN)
+		quic, qlen = addQuicInitHeader(packet, quicRespLen)
 		quic[5] = 3
 		copy(quic[6:9], packet[8:])
 		quic[9] = 3
 		copy(quic[10:13], packet[4:])
 		xorResp(quic[qlen:], mask)
 	case MessageCookieReplyType:
-		quic, qlen = addQuicInitHeader(packet, QUIC_COOK_LEN)
+		quic, qlen = addQuicInitHeader(packet, quicCookLen)
 		quic[5] = 3
 		copy(quic[6:9], packet[4:])
 		quic[9] = 0
