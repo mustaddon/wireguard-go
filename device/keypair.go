@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mustaddon/wireguard-go/replay"
+	"golang.zx2c4.com/wireguard/replay"
 )
 
 /* Due to limitations in Go and /x/crypto there is currently
