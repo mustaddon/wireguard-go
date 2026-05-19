@@ -12,64 +12,60 @@ var DEFAULT_HIDDEN_MASK = [32]byte{
 	0x98, 0x31, 0x89, 0xaf, 0xd6, 0x5c, 0x85, 0x93,
 	0x8b, 0x90, 0x52, 0x33, 0x17, 0xff, 0x18, 0x57}
 
-func ByteMask(device *Device) *[32]byte {
+func hidByteMask(device *Device) *[32]byte {
 	return &device.net.hiddenMask
 }
 
-func GetMask(device *Device) []uint32 {
+func hidUintMask(device *Device) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&device.net.hiddenMask[0])), 8)
 }
 
-func IntSlice(buffer []byte, len int) []uint32 {
+func uintSlice(buffer []byte, len int) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&buffer[0])), len)
 }
 
-func XorHead(buffer []byte, device *Device) {
-	buffer[0] = (buffer[0] & 0xF0) | ((buffer[0] ^ ByteMask(device)[0]) & 0x0F)
+func xorHead(buffer []byte, device *Device) {
+	buffer[0] = (buffer[0] & 0xF0) | ((buffer[0] ^ hidByteMask(device)[0]) & 0x0F)
 }
 
-func XorData(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 4)
+func xorData(buffer []byte, mask []uint32) {
+	ptr := uintSlice(buffer, 4)
 	zero := ptr[0] ^ mask[0]
 	ptr[1] ^= zero ^ mask[1]
 	ptr[2] ^= zero ^ mask[2]
 	ptr[3] ^= zero ^ mask[3]
 }
 
-func XorCook(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 2)
+func xorCook(buffer []byte, mask []uint32) {
+	ptr := uintSlice(buffer, 2)
 	zero := ptr[0] ^ mask[0]
 	ptr[1] ^= zero ^ mask[1]
 }
 
-func XorInit(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 2)
+func xorInit(buffer []byte, mask []uint32) {
+	ptr := uintSlice(buffer, 2)
 	zero := ptr[0] ^ mask[0]
 	ptr[1] ^= zero ^ mask[1]
-	XorMac2(buffer, zero, mask)
+	xorMac2(buffer, zero, mask)
 }
 
-func XorResp(buffer []byte, mask []uint32) {
-	ptr := IntSlice(buffer, 3)
+func xorResp(buffer []byte, mask []uint32) {
+	ptr := uintSlice(buffer, 3)
 	zero := ptr[0] ^ mask[0]
 	ptr[1] ^= zero ^ mask[1]
 	ptr[2] ^= zero ^ mask[2]
-	XorMac2(buffer, zero, mask)
+	xorMac2(buffer, zero, mask)
 }
 
-func XorMac2(buffer []byte, zero uint32, mask []uint32) {
-	ptr := IntSlice(buffer[len(buffer)-16:], 4)
+func xorMac2(buffer []byte, zero uint32, mask []uint32) {
+	ptr := uintSlice(buffer[len(buffer)-16:], 4)
 	ptr[0] ^= zero ^ mask[4]
 	ptr[1] ^= zero ^ mask[5]
 	ptr[2] ^= zero ^ mask[6]
 	ptr[3] ^= zero ^ mask[7]
 }
 
-func MsgHiddenType(val byte) uint32 {
-	return uint32(val & 7)
-}
-
-func HiddenLen(val byte) int {
+func hiddenLen(val byte) int {
 	return int(val & 7)
 }
 
@@ -80,14 +76,14 @@ const (
 	QUIC_DATA_LEN = 4
 )
 
-func RemoveHidden(buffer []byte, device *Device) int {
+func removeHidden(buffer []byte, device *Device) int {
 	if len(buffer) < MinMessageSize {
 		return -1
 	}
 
-	XorHead(buffer, device)
+	xorHead(buffer, device)
 	msgType := uint32(0)
-	hlen := HiddenLen(buffer[0])
+	hlen := hiddenLen(buffer[0])
 
 	if (buffer[0] & 0x80) != 0 {
 		if buffer[5] != 3 {
@@ -109,17 +105,17 @@ func RemoveHidden(buffer []byte, device *Device) int {
 		}
 	}
 
-	mask := GetMask(device)
+	mask := hidUintMask(device)
 
 	switch msgType {
 	case MessageTransportType:
-		XorData(buffer, mask)
+		xorData(buffer, mask)
 	case MessageInitiationType:
-		XorInit(buffer, mask)
+		xorInit(buffer, mask)
 	case MessageResponseType:
-		XorResp(buffer, mask)
+		xorResp(buffer, mask)
 	case MessageCookieReplyType:
-		XorCook(buffer, mask)
+		xorCook(buffer, mask)
 	default:
 		return -1
 	}
@@ -129,7 +125,7 @@ func RemoveHidden(buffer []byte, device *Device) int {
 	return hlen
 }
 
-func AddHiddenHeader(packet []byte, qlen int, hlen int) ([]byte, int) {
+func addHiddenHeader(packet []byte, qlen int, hlen int) ([]byte, int) {
 	tlen := qlen + hlen
 	hidden := make([]byte, len(packet)+tlen)
 	if hlen > 0 {
@@ -143,10 +139,10 @@ func AddHiddenHeader(packet []byte, qlen int, hlen int) ([]byte, int) {
 	return hidden, tlen
 }
 
-func AddQuicInitHeader(packet []byte, qlen int) ([]byte, int) {
+func addQuicInitHeader(packet []byte, qlen int) ([]byte, int) {
 	flags := 0xC0 | byte(rand.Uint32()&0x0F)
-	hlen := HiddenLen(flags)
-	quic, offset := AddHiddenHeader(packet, qlen, hlen)
+	hlen := hiddenLen(flags)
+	quic, offset := addHiddenHeader(packet, qlen, hlen)
 	quic[0] = flags
 	binary.BigEndian.PutUint32(quic[1:], 1)
 	quic[qlen-3] = 0
@@ -154,22 +150,22 @@ func AddQuicInitHeader(packet []byte, qlen int) ([]byte, int) {
 	return quic, offset
 }
 
-func AddQuicDataHeader(packet []byte) ([]byte, int) {
+func addQuicDataHeader(packet []byte) ([]byte, int) {
 	flags := 0x40 | byte(rand.Uint32()&0x1F)
-	quic, offset := AddHiddenHeader(packet, QUIC_DATA_LEN, HiddenLen(flags))
+	quic, offset := addHiddenHeader(packet, QUIC_DATA_LEN, hiddenLen(flags))
 	quic[0] = flags
 	copy(quic[1:4], packet[4:])
 	return quic, offset
 }
 
-func ApplyHidden(packet []byte, msgType uint32, device *Device) []byte {
-	mask := GetMask(device)
+func applyHidden(packet []byte, msgType uint32, device *Device) []byte {
+	mask := hidUintMask(device)
 
 	if msgType == MessageTransportType && len(packet) != MessageKeepaliveSize {
 		packet[0] = (byte(rand.Uint32()) & 0x18) | 0x40
 		copy(packet[1:4], packet[4:])
-		XorData(packet, mask)
-		XorHead(packet, device)
+		xorData(packet, mask)
+		xorHead(packet, device)
 		return packet
 	}
 
@@ -179,30 +175,30 @@ func ApplyHidden(packet []byte, msgType uint32, device *Device) []byte {
 
 	switch msgType {
 	case MessageTransportType:
-		quic, qlen = AddQuicDataHeader(packet)
-		XorData(quic[qlen:], mask)
+		quic, qlen = addQuicDataHeader(packet)
+		xorData(quic[qlen:], mask)
 	case MessageInitiationType:
-		quic, qlen = AddQuicInitHeader(packet, QUIC_INIT_LEN)
+		quic, qlen = addQuicInitHeader(packet, QUIC_INIT_LEN)
 		quic[5] = 8
 		binary.LittleEndian.PutUint64(quic[6:], rand.Uint64())
 		quic[14] = 3
 		copy(quic[15:18], packet[4:])
-		XorInit(quic[qlen:], mask)
+		xorInit(quic[qlen:], mask)
 	case MessageResponseType:
-		quic, qlen = AddQuicInitHeader(packet, QUIC_RESP_LEN)
+		quic, qlen = addQuicInitHeader(packet, QUIC_RESP_LEN)
 		quic[5] = 3
 		copy(quic[6:9], packet[8:])
 		quic[9] = 3
 		copy(quic[10:13], packet[4:])
-		XorResp(quic[qlen:], mask)
+		xorResp(quic[qlen:], mask)
 	case MessageCookieReplyType:
-		quic, qlen = AddQuicInitHeader(packet, QUIC_COOK_LEN)
+		quic, qlen = addQuicInitHeader(packet, QUIC_COOK_LEN)
 		quic[5] = 3
 		copy(quic[6:9], packet[4:])
 		quic[9] = 0
-		XorCook(quic[qlen:], mask)
+		xorCook(quic[qlen:], mask)
 	}
 
-	XorHead(quic, device)
+	xorHead(quic, device)
 	return quic
 }
