@@ -130,7 +130,7 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 	peer.timersAnyAuthenticatedPacketTraversal()
 	peer.timersAnyAuthenticatedPacketSent()
 
-	err = peer.SendBuffers([][]byte{applyHidden(packet, MessageInitiationType, peer.device)})
+	err = peer.SendBuffers([][]byte{applyHidden(packet, MessageInitiationType, peer)})
 	if err != nil {
 		peer.device.log.Errorf("%v - Failed to send handshake initiation: %v", peer, err)
 	}
@@ -167,7 +167,7 @@ func (peer *Peer) SendHandshakeResponse() error {
 	peer.timersAnyAuthenticatedPacketSent()
 
 	// TODO: allocation could be avoided
-	err = peer.SendBuffers([][]byte{applyHidden(packet, MessageResponseType, peer.device)})
+	err = peer.SendBuffers([][]byte{applyHidden(packet, MessageResponseType, peer)})
 	if err != nil {
 		peer.device.log.Errorf("%v - Failed to send handshake response: %v", peer, err)
 	}
@@ -187,7 +187,7 @@ func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement)
 	packet := make([]byte, MessageCookieReplySize)
 	_ = reply.marshal(packet)
 	// TODO: allocation could be avoided
-	device.net.bind.Send([][]byte{applyHidden(packet, MessageCookieReplyType, device)}, initiatingElem.endpoint)
+	device.net.bind.Send([][]byte{applyHidden(packet, MessageCookieReplyType, device.indexTable.Lookup(sender).peer)}, initiatingElem.endpoint)
 
 	return nil
 }
@@ -510,7 +510,7 @@ func (peer *Peer) RoutineSequentialSender(maxBatchSize int) {
 			if len(elem.packet) != MessageKeepaliveSize {
 				dataSent = true
 			}
-			bufs = append(bufs, applyHidden(elem.packet, MessageTransportType, peer.device))
+			bufs = append(bufs, applyHidden(elem.packet, MessageTransportType, peer))
 		}
 
 		peer.timersAnyAuthenticatedPacketTraversal()

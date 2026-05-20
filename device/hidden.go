@@ -158,14 +158,14 @@ func addQuicDataHeader(packet []byte) ([]byte, int) {
 	return quic, offset
 }
 
-func applyHidden(packet []byte, msgType uint32, device *Device) []byte {
-	mask := hidUintMask(device)
+func applyHidden(packet []byte, msgType uint32, peer *Peer) []byte {
+	mask := hidUintMask(peer.device)
 
 	if msgType == MessageTransportType && len(packet) != MessageKeepaliveSize {
 		packet[0] = (byte(rand.Uint32()) & 0x18) | 0x40
 		copy(packet[1:4], packet[4:])
 		xorData(packet, mask)
-		xorHead(packet, device)
+		xorHead(packet, peer.device)
 		return packet
 	}
 
@@ -199,6 +199,6 @@ func applyHidden(packet []byte, msgType uint32, device *Device) []byte {
 		xorCook(quic[qlen:], mask)
 	}
 
-	xorHead(quic, device)
+	xorHead(quic, peer.device)
 	return quic
 }
