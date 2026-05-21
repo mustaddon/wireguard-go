@@ -6,26 +6,12 @@ import (
 	"unsafe"
 )
 
-var MASK = [32]byte{
-	0x81, 0xab, 0xa4, 0x0d, 0xb7, 0x73, 0x42, 0x2b,
-	0xd0, 0x79, 0x2d, 0x65, 0xce, 0x69, 0x1f, 0x82,
-	0x98, 0x31, 0x89, 0xaf, 0xd6, 0x5c, 0x85, 0x93,
-	0x8b, 0x90, 0x52, 0x33, 0x17, 0xff, 0x18, 0x57}
-
-func hidByteMask(device *Device) *[32]byte {
-	return &MASK
-}
-
-func hidUintMask(device *Device) []uint32 {
-	return unsafe.Slice((*uint32)(unsafe.Pointer(&MASK[0])), 8)
-}
-
 func uintSlice(buffer []byte, len int) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&buffer[0])), len)
 }
 
-func xorHead(buffer []byte, device *Device) {
-	buffer[0] = (buffer[0] & 0xF0) | ((buffer[0] ^ hidByteMask(device)[0]) & 0x0F)
+func xorHead(buffer []byte, mask []byte) {
+	buffer[0] = (buffer[0] & 0xF0) | ((buffer[0] ^ mask[3]) & 0x0F)
 }
 
 func xorData(buffer []byte, mask []uint32) {
@@ -81,7 +67,7 @@ func removeHidden(buffer []byte, device *Device) int {
 		return -1
 	}
 
-	xorHead(buffer, device)
+	xorHead(buffer, device.staticIdentity.publicKey[:])
 	msgType := uint32(0)
 	hlen := hiddenLen(buffer[0])
 
@@ -105,7 +91,7 @@ func removeHidden(buffer []byte, device *Device) int {
 		}
 	}
 
-	mask := hidUintMask(device)
+	mask := uintSlice(device.staticIdentity.publicKey[:], 8)
 
 	switch msgType {
 	case MessageTransportType:
@@ -159,13 +145,13 @@ func addQuicDataHeader(packet []byte) ([]byte, int) {
 }
 
 func applyHidden(packet []byte, msgType uint32, peer *Peer) []byte {
-	mask := hidUintMask(peer.device)
+	mask := uintSlice(peer.handshake.remoteStatic[:], 8)
 
 	if msgType == MessageTransportType && len(packet) != MessageKeepaliveSize {
 		packet[0] = (byte(rand.Uint32()) & 0x18) | 0x40
 		copy(packet[1:4], packet[4:])
 		xorData(packet, mask)
-		xorHead(packet, peer.device)
+		xorHead(packet, peer.handshake.remoteStatic[:])
 		return packet
 	}
 
@@ -199,6 +185,6 @@ func applyHidden(packet []byte, msgType uint32, peer *Peer) []byte {
 		xorCook(quic[qlen:], mask)
 	}
 
-	xorHead(quic, peer.device)
+	xorHead(quic, peer.handshake.remoteStatic[:])
 	return quic
 }
