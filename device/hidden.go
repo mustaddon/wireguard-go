@@ -10,6 +10,10 @@ func uintSlice(buffer []byte, len int) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&buffer[0])), len)
 }
 
+func maskLen(hlen byte, mask []byte) byte {
+	return hlen ^ mask[7]
+}
+
 func xorHead(buffer []byte, mask []byte) {
 	buffer[0] = (buffer[0] & 0xF0) | ((buffer[0] ^ mask[3]) & 0x0F)
 }
@@ -52,7 +56,14 @@ func xorMac2(buffer []byte, zero uint32, mask []uint32) {
 }
 
 func hiddenLen(val byte) int {
-	return int(val & 7)
+	return int(val & 31)
+}
+
+func quicHiddenLen(buffer []byte, qlen int, mask []byte) int {
+	if buffer[0]&1 == 0 {
+		return qlen
+	}
+	return qlen + int(maskLen(buffer[qlen], mask))
 }
 
 const (
@@ -67,41 +78,40 @@ func removeHidden(buffer []byte, device *Device) int {
 		return -1
 	}
 
-	xorHead(buffer, device.staticIdentity.publicKey[:])
+	mask := device.staticIdentity.publicKey[:]
+	xorHead(buffer, mask)
 	msgType := uint32(0)
-	hlen := hiddenLen(buffer[0])
+	hlen := int(0)
 
-	if (buffer[0] & 0x80) != 0 {
+	if (buffer[0] & 0x80) == 0 {
+		msgType = MessageTransportType
+		if buffer[0]&1 == 1 {
+			hlen = quicHiddenLen(buffer, quicDataLen, mask)
+			buffer = buffer[hlen:]
+		}
+	} else {
 		if buffer[5] != 3 {
-			hlen += quicInitLen
+			hlen = quicHiddenLen(buffer, quicInitLen, mask)
 			msgType = MessageInitiationType
 		} else if buffer[9] != 0 {
-			hlen += quicRespLen
+			hlen = quicHiddenLen(buffer, quicRespLen, mask)
 			msgType = MessageResponseType
 		} else {
-			hlen += quicCookLen
+			hlen = quicHiddenLen(buffer, quicCookLen, mask)
 			msgType = MessageCookieReplyType
 		}
 		buffer = buffer[hlen:]
-	} else {
-		msgType = MessageTransportType
-		if hlen > 0 {
-			hlen += quicDataLen
-			buffer = buffer[hlen:]
-		}
 	}
-
-	mask := uintSlice(device.staticIdentity.publicKey[:], 8)
 
 	switch msgType {
 	case MessageTransportType:
-		xorData(buffer, mask)
+		xorData(buffer, uintSlice(mask, 8))
 	case MessageInitiationType:
-		xorInit(buffer, mask)
+		xorInit(buffer, uintSlice(mask, 8))
 	case MessageResponseType:
-		xorResp(buffer, mask)
+		xorResp(buffer, uintSlice(mask, 8))
 	case MessageCookieReplyType:
-		xorCook(buffer, mask)
+		xorCook(buffer, uintSlice(mask, 8))
 	default:
 		return -1
 	}
@@ -114,44 +124,49 @@ func removeHidden(buffer []byte, device *Device) int {
 func addHiddenHeader(packet []byte, qlen int, hlen int) ([]byte, int) {
 	tlen := qlen + hlen
 	hidden := make([]byte, len(packet)+tlen)
-	if hlen > 0 {
-		if tlen > 8 {
-			binary.LittleEndian.PutUint64(hidden[tlen-8:], rand.Uint64())
-		} else if tlen > 4 {
-			binary.LittleEndian.PutUint32(hidden[tlen-4:], rand.Uint32())
-		}
+	hlenNext := hidden[qlen:]
+	hlenLeft := hlen
+	for hlenLeft > 0 {
+		binary.LittleEndian.PutUint64(hlenNext, rand.Uint64())
+		hlenNext = hlenNext[8:]
+		hlenLeft -= 8
 	}
 	copy(hidden[tlen:], packet)
 	return hidden, tlen
 }
 
-func addQuicInitHeader(packet []byte, qlen int) ([]byte, int) {
-	flags := 0xC0 | byte(rand.Uint32()&0x0F)
-	hlen := hiddenLen(flags)
+func addQuicInitHeader(packet []byte, qlen int, mask []byte) ([]byte, int) {
+	hlen := hiddenLen(byte(rand.Uint32()))
 	quic, offset := addHiddenHeader(packet, qlen, hlen)
-	quic[0] = flags
+	if hlen > 0 {
+		quic[0] = 0xC1 | byte(rand.Uint32()&0x0E)
+		quic[qlen] = maskLen(byte(hlen), mask)
+	} else {
+		quic[0] = 0xC0 | byte(rand.Uint32()&0x0E)
+	}
 	binary.BigEndian.PutUint32(quic[1:], 1)
 	quic[qlen-3] = 0
 	binary.BigEndian.PutUint16(quic[qlen-2:], 0x4000|uint16(hlen+len(packet)))
 	return quic, offset
 }
 
-func addQuicDataHeader(packet []byte) ([]byte, int) {
-	flags := 0x40 | byte(rand.Uint32()&0x1F)
-	quic, offset := addHiddenHeader(packet, quicDataLen, hiddenLen(flags))
-	quic[0] = flags
+func addQuicDataHeader(packet []byte, mask []byte) ([]byte, int) {
+	hlen := max(1, hiddenLen(byte(rand.Uint32())))
+	quic, offset := addHiddenHeader(packet, quicDataLen, hlen)
+	quic[0] = 0x41 | byte(rand.Uint32()&0x1E)
+	quic[quicDataLen] = maskLen(byte(hlen), mask)
 	copy(quic[1:4], packet[4:])
 	return quic, offset
 }
 
 func applyHidden(packet []byte, msgType uint32, peer *Peer) []byte {
-	mask := uintSlice(peer.handshake.remoteStatic[:], 8)
+	mask := peer.handshake.remoteStatic[:]
 
 	if msgType == MessageTransportType && len(packet) != MessageKeepaliveSize {
-		packet[0] = (byte(rand.Uint32()) & 0x18) | 0x40
+		packet[0] = (byte(rand.Uint32()) & 0x1E) | 0x40
 		copy(packet[1:4], packet[4:])
-		xorData(packet, mask)
-		xorHead(packet, peer.handshake.remoteStatic[:])
+		xorData(packet, uintSlice(mask, 8))
+		xorHead(packet, mask)
 		return packet
 	}
 
@@ -161,30 +176,30 @@ func applyHidden(packet []byte, msgType uint32, peer *Peer) []byte {
 
 	switch msgType {
 	case MessageTransportType:
-		quic, qlen = addQuicDataHeader(packet)
-		xorData(quic[qlen:], mask)
+		quic, qlen = addQuicDataHeader(packet, mask)
+		xorData(quic[qlen:], uintSlice(mask, 8))
 	case MessageInitiationType:
-		quic, qlen = addQuicInitHeader(packet, quicInitLen)
+		quic, qlen = addQuicInitHeader(packet, quicInitLen, mask)
 		quic[5] = 8
 		binary.LittleEndian.PutUint64(quic[6:], rand.Uint64())
 		quic[14] = 3
 		copy(quic[15:18], packet[4:])
-		xorInit(quic[qlen:], mask)
+		xorInit(quic[qlen:], uintSlice(mask, 8))
 	case MessageResponseType:
-		quic, qlen = addQuicInitHeader(packet, quicRespLen)
+		quic, qlen = addQuicInitHeader(packet, quicRespLen, mask)
 		quic[5] = 3
 		copy(quic[6:9], packet[8:])
 		quic[9] = 3
 		copy(quic[10:13], packet[4:])
-		xorResp(quic[qlen:], mask)
+		xorResp(quic[qlen:], uintSlice(mask, 8))
 	case MessageCookieReplyType:
-		quic, qlen = addQuicInitHeader(packet, quicCookLen)
+		quic, qlen = addQuicInitHeader(packet, quicCookLen, mask)
 		quic[5] = 3
 		copy(quic[6:9], packet[4:])
 		quic[9] = 0
-		xorCook(quic[qlen:], mask)
+		xorCook(quic[qlen:], uintSlice(mask, 8))
 	}
 
-	xorHead(quic, peer.handshake.remoteStatic[:])
+	xorHead(quic, mask)
 	return quic
 }
