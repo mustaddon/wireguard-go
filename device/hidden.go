@@ -87,6 +87,9 @@ func removeHidden(buffer []byte, device *Device) int {
 		msgType = MessageTransportType
 		if buffer[0]&1 == 1 {
 			hlen = quicHiddenLen(buffer, quicDataLen, mask)
+			if hlen >= len(buffer) {
+				return -1
+			}
 			buffer = buffer[hlen:]
 		}
 	} else {
@@ -100,17 +103,32 @@ func removeHidden(buffer []byte, device *Device) int {
 			hlen = quicHiddenLen(buffer, quicCookLen, mask)
 			msgType = MessageCookieReplyType
 		}
+		if hlen >= len(buffer) {
+			return -1
+		}
 		buffer = buffer[hlen:]
 	}
 
 	switch msgType {
 	case MessageTransportType:
+		if len(buffer) < MessageTransportSize {
+			return -1
+		}
 		xorData(buffer, uintSlice(mask, 8))
 	case MessageInitiationType:
+		if len(buffer) < MessageInitiationSize {
+			return -1
+		}
 		xorInit(buffer, uintSlice(mask, 8))
 	case MessageResponseType:
+		if len(buffer) < MessageResponseSize {
+			return -1
+		}
 		xorResp(buffer, uintSlice(mask, 8))
 	case MessageCookieReplyType:
+		if len(buffer) < MessageCookieReplySize {
+			return -1
+		}
 		xorCook(buffer, uintSlice(mask, 8))
 	default:
 		return -1
