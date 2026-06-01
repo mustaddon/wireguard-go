@@ -84,54 +84,44 @@ func removeHidden(buffer []byte, device *Device) int {
 	hlen := int(0)
 
 	if (buffer[0] & 0x80) == 0 {
-		msgType = MessageTransportType
 		if buffer[0]&1 == 1 {
 			hlen = quicHiddenLen(buffer, quicDataLen, mask)
-			if hlen >= len(buffer) {
+			if len(buffer) < hlen {
 				return -1
 			}
 			buffer = buffer[hlen:]
 		}
-	} else {
-		if buffer[5] != 3 {
-			hlen = quicHiddenLen(buffer, quicInitLen, mask)
-			msgType = MessageInitiationType
-		} else if buffer[9] != 0 {
-			hlen = quicHiddenLen(buffer, quicRespLen, mask)
-			msgType = MessageResponseType
-		} else {
-			hlen = quicHiddenLen(buffer, quicCookLen, mask)
-			msgType = MessageCookieReplyType
-		}
-		if hlen >= len(buffer) {
-			return -1
-		}
-		buffer = buffer[hlen:]
-	}
-
-	switch msgType {
-	case MessageTransportType:
 		if len(buffer) < MessageTransportSize {
 			return -1
 		}
 		xorData(buffer, uintSlice(mask, 8))
-	case MessageInitiationType:
-		if len(buffer) < MessageInitiationSize {
-			return -1
+		msgType = MessageTransportType
+	} else {
+		if buffer[5] != 3 {
+			hlen = quicHiddenLen(buffer, quicInitLen, mask)
+			if len(buffer) < hlen+MessageInitiationSize {
+				return -1
+			}
+			buffer = buffer[hlen:]
+			xorInit(buffer, uintSlice(mask, 8))
+			msgType = MessageInitiationType
+		} else if buffer[9] != 0 {
+			hlen = quicHiddenLen(buffer, quicRespLen, mask)
+			if len(buffer) < hlen+MessageResponseSize {
+				return -1
+			}
+			buffer = buffer[hlen:]
+			xorResp(buffer, uintSlice(mask, 8))
+			msgType = MessageResponseType
+		} else {
+			hlen = quicHiddenLen(buffer, quicCookLen, mask)
+			if len(buffer) < hlen+MessageCookieReplySize {
+				return -1
+			}
+			buffer = buffer[hlen:]
+			xorCook(buffer, uintSlice(mask, 8))
+			msgType = MessageCookieReplyType
 		}
-		xorInit(buffer, uintSlice(mask, 8))
-	case MessageResponseType:
-		if len(buffer) < MessageResponseSize {
-			return -1
-		}
-		xorResp(buffer, uintSlice(mask, 8))
-	case MessageCookieReplyType:
-		if len(buffer) < MessageCookieReplySize {
-			return -1
-		}
-		xorCook(buffer, uintSlice(mask, 8))
-	default:
-		return -1
 	}
 
 	binary.LittleEndian.PutUint32(buffer, msgType)
